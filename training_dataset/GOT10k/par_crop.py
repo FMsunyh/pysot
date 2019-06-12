@@ -1,16 +1,17 @@
-from os.path import join, isdir
+import argparse
+from os.path import join, isdir, exists
 from os import listdir, mkdir, makedirs
 import cv2
 import numpy as np
 import glob
-import xml.etree.ElementTree as ET
 from concurrent import futures
 import sys
 import time
+import matplotlib.pyplot as plt
 
-VID_base_path = '/home/syh/train_data/ILSVRC2015'
-ann_base_path = join(VID_base_path, 'Annotations/VID/train/')
-sub_sets = sorted({'a', 'b', 'c', 'd', 'e'})
+got10k_base_path = '/home/syh/train_data/GOT10k/'
+sub_sets = sorted({'train', 'val'})
+# sub_sets = sorted({'val'})
 
 
 # Print iterations progress (thanks StackOverflow)
@@ -52,7 +53,7 @@ def pos_s_2_bbox(pos, s):
 
 def crop_like_SiamFC(image, bbox, context_amount=0.5, exemplar_size=127, instanc_size=255, padding=(0, 0, 0)):
     target_pos = [(bbox[2]+bbox[0])/2., (bbox[3]+bbox[1])/2.]
-    target_size = [bbox[2]-bbox[0], bbox[3]-bbox[1]]
+    target_size = [bbox[2]-bbox[0], bbox[3]-bbox[1]]   # width, height
     wc_z = target_size[1] + context_amount * sum(target_size)
     hc_z = target_size[0] + context_amount * sum(target_size)
     s_z = np.sqrt(wc_z * hc_z)
@@ -68,39 +69,53 @@ def crop_like_SiamFC(image, bbox, context_amount=0.5, exemplar_size=127, instanc
 
 def crop_video(sub_set, video, crop_path, instanc_size):
     video_crop_base_path = join(crop_path, sub_set, video)
-    if not isdir(video_crop_base_path): makedirs(video_crop_base_path)
+    if not exists(video_crop_base_path): makedirs(video_crop_base_path)
 
-    sub_set_base_path = join(ann_base_path, sub_set)
-    xmls = sorted(glob.glob(join(sub_set_base_path, video, '*.xml')))
-    for xml in xmls:
-        xmltree = ET.parse(xml)
-        # size = xmltree.findall('size')[0]
-        # frame_sz = [int(it.text) for it in size]
-        objects = xmltree.findall('object')
-        objs = []
-        filename = xmltree.findall('filename')[0].text
+    sub_set_base_path = join(got10k_base_path, sub_set)
+    video_base_path = join(sub_set_base_path, video)
+    gts_path = join(video_base_path, 'groundtruth.txt')
+    gts = np.loadtxt(open(gts_path, "rb"), delimiter=',')
+    jpgs = sorted(glob.glob(join(video_base_path, '*.jpg')))
 
-        im = cv2.imread(xml.replace('xml', 'JPEG').replace('Annotations', 'Data'))
+    if not jpgs:
+        print('no jpg files, try png files')
+        jpgs = sorted(glob.glob(join(video_base_path, '*.png')))
+        if not jpgs:
+            print('no jpg and png files, check data please')
+
+    for idx, img_path in enumerate(jpgs):
+        im = cv2.imread(img_path)
         avg_chans = np.mean(im, axis=(0, 1))
-        for object_iter in objects:
-            trackid = int(object_iter.find('trackid').text)
-            # name = (object_iter.find('name')).text
-            bndbox = object_iter.find('bndbox')
-            # occluded = int(object_iter.find('occluded').text)
+        gt = gts[idx]
+        bbox = [int(g) for g in gt]  # (x,y,w,h)
+        bbox = [bbox[0], bbox[1], bbox[0]+bbox[2], bbox[1]+bbox[3]]   # (xmin, ymin, xmax, ymax)
 
-            bbox = [int(bndbox.find('xmin').text), int(bndbox.find('ymin').text),
-                    int(bndbox.find('xmax').text), int(bndbox.find('ymax').text)]
-            z, x = crop_like_SiamFC(im, bbox, instanc_size=instanc_size, padding=avg_chans)
-            cv2.imwrite(join(video_crop_base_path, '{:06d}.{:02d}.z.jpg'.format(int(filename), trackid)), z)
-            cv2.imwrite(join(video_crop_base_path, '{:06d}.{:02d}.x.jpg'.format(int(filename), trackid)), x)
+        z, x = crop_like_SiamFC(im, bbox, instanc_size=instanc_size, padding=avg_chans)
+        cv2.imwrite(join(video_crop_base_path, '{:06d}.{:02d}.z.jpg'.format(int(idx), 0)), z)
+        cv2.imwrite(join(video_crop_base_path, '{:06d}.{:02d}.x.jpg'.format(int(idx), 0)), x)
 
 
-def main(instanc_size=511, num_threads=24):
-    crop_path = './crop{:d}'.format(instanc_size)
-    if not isdir(crop_path): mkdir(crop_path)
+        plt.imshow(im)
+        plt.title('o')
+        plt.show()
+
+        plt.imshow(z)
+        plt.title('z')
+        plt.show()
+
+        plt.imshow(x)
+        plt.title('x')
+        plt.show()
+
+        print('++++')
+
+
+def main(save_path, instanc_size=511, num_threads=24):
+    crop_path = '{}/crop{:d}'.format(save_path, instanc_size)
+    if not exists(crop_path): makedirs(crop_path)
 
     for sub_set in sub_sets:
-        sub_set_base_path = join(ann_base_path, sub_set)
+        sub_set_base_path = join(got10k_base_path, sub_set)
         videos = sorted(listdir(sub_set_base_path))
         n_videos = len(videos)
         with futures.ProcessPoolExecutor(max_workers=num_threads) as executor:
@@ -110,9 +125,21 @@ def main(instanc_size=511, num_threads=24):
                 printProgress(i, n_videos, prefix=sub_set, suffix='Done ', barLength=40)
 
 
+parser = argparse.ArgumentParser(description='Get the data info')
+parser.add_argument('-d', '--svae_path', help='svae the data', default='/home/syh/siamdw/data/GOT10k')
+parser.add_argument('-i', '--instanc_size', help='instanc size', default=512, type=int)
+parser.add_argument('-w', '--num_threads', help='num threads', default=6,type=int)
+args = parser.parse_args()
+
 if __name__ == '__main__':
     since = time.time()
-    main(int(sys.argv[1]), int(sys.argv[2]))
+    main(args.svae_path, args.instanc_size, args.num_threads)
     time_elapsed = time.time() - since
     print('Total complete in {:.0f}m {:.0f}s'.format(
         time_elapsed // 60, time_elapsed % 60))
+
+
+'''
+cd /home/syh/siamdw/preprocessing
+python par_crop.py -i 512
+'''

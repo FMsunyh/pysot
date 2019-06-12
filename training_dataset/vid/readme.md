@@ -22,6 +22,7 @@ ln -sfb $PWD/ILSVRC2015/Data/VID/val ILSVRC2015/Data/VID/train/e
 ### Crop & Generate data info (20 min)
 
 ````shell
+# set path of dataset [/home/syh/train_data/ILSVRC2015]
 python parse_vid.py
 
 #python par_crop.py [crop_size] [num_threads]
