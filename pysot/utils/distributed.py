@@ -81,7 +81,11 @@ def _dist_init():
         proc_id: rank
     '''
     rank = int(os.environ['RANK'])
+
+    logger.info(os.environ)
+
     num_gpus = torch.cuda.device_count()
+    # torch.cuda.set_device(0)
     torch.cuda.set_device(rank % num_gpus)
     dist.init_process_group(backend='nccl')
     world_size = dist.get_world_size()

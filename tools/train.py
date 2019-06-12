@@ -171,7 +171,7 @@ def train(train_loader, model, optimizer, lr_scheduler, tb_writer):
             get_rank() == 0:
         os.makedirs(cfg.TRAIN.SNAPSHOT_DIR)
 
-    logger.info("model\n{}".format(describe(model.module)))
+    # logger.info("model\n{}".format(describe(model.module)))
     end = time.time()
     for idx, data in enumerate(train_loader):
         if epoch != idx // num_per_epoch + start_epoch:
@@ -253,8 +253,16 @@ def train(train_loader, model, optimizer, lr_scheduler, tb_writer):
                             cfg.TRAIN.EPOCH * num_per_epoch)
         end = time.time()
 
+def env_init():
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    os.environ["MASTER_PORT"] = "2333"
+    os.environ["WORLD_SIZE"] = "1"
+    os.environ["RANK"] = "0"
+    os.environ["MASTER_ADDR"] = "127.0.0.1"
 
 def main():
+    env_init()
+
     rank, world_size = dist_init()
     logger.info("init done")
 
@@ -270,7 +278,7 @@ def main():
                              logging.INFO)
 
         logger.info("Version Information: \n{}\n".format(commit()))
-        logger.info("config \n{}".format(json.dumps(cfg, indent=4)))
+        # logger.info("config \n{}".format(json.dumps(cfg, indent=4)))
 
     # create model
     model = ModelBuilder().cuda().train()

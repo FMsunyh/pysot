@@ -66,10 +66,8 @@ TRAIN:
 
 DATASET:
     NAMES: 
+    - 'GOT10k'
     - 'VID'
-    - 'YOUTUBEBB'
-    - 'COCO'
-    - 'DET'
 
     TEMPLATE:
         SHIFT: 4

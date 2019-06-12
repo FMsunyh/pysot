@@ -107,3 +107,4 @@ testing_dataset/*
 experiments
 
 .idea
+pretrained_models/
